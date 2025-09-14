@@ -22,6 +22,7 @@ import org.bukkit.plugin.Plugin
 import org.bukkit.scoreboard.DisplaySlot
 import org.bukkit.scoreboard.Objective
 import org.bukkit.scoreboard.Scoreboard
+import org.bukkit.scheduler.BukkitTask
 import org.bukkit.util.Vector
 import org.slf4j.LoggerFactory
 import java.time.Duration
@@ -40,6 +41,7 @@ import btc.renaud.archery.entry.GameStatArtifactEntry
 import btc.renaud.archery.entry.recordScore
 import btc.renaud.archery.util.toLocation
 import btc.renaud.archery.util.contains
+import btc.renaud.archery.util.formatMessage
 import com.typewritermc.engine.paper.entry.entries.get
 
 private val plugin: Plugin = Bukkit.getPluginManager().getPlugin("TypeWriter")
@@ -68,6 +70,7 @@ class ArcheryInteraction(
     private val logger = LoggerFactory.getLogger("ArcheryInteraction")
     private val players = initialPlayers.toMutableList()
     private val scores = initialPlayers.associate { it.uniqueId to 0 }.toMutableMap()
+    private val shots = initialPlayers.associate { it.uniqueId to 0 }.toMutableMap()
     private val zoneList: List<Zone> = when (definition.shootingZoneOrder) {
         ShootingZoneOrder.RANDOM -> definition.shootingZones.shuffled()
         ShootingZoneOrder.SEQUENTIAL -> definition.shootingZones
@@ -80,6 +83,24 @@ class ArcheryInteraction(
     private var scoreboard: Scoreboard? = null
     private var objective: Objective? = null
     private val soloObjectives = mutableMapOf<UUID, Objective>()
+    private val playerLines = mutableMapOf<UUID, String>()
+    private val respawnTasks = mutableSetOf<BukkitTask>()
+
+    private fun formatLine(player: Player, score: Int): String {
+        val template = when (mode) {
+            GameMode.MAX_TARGET -> definition.messages.scoreboardLineMaxTarget
+            GameMode.TIME_ATTACK -> definition.messages.scoreboardLineTimeAttack
+        }
+        return formatMessage(
+            template,
+            mapOf(
+                "player" to player.name,
+                "score" to score.toString(),
+                "max" to definition.maxTargets.toString(),
+                "shots" to (shots[player.uniqueId] ?: 0).toString()
+            )
+        )
+    }
 
     private fun runSync(block: () -> Unit) {
         if (Bukkit.isPrimaryThread()) block() else Bukkit.getScheduler().runTask(plugin, block)
@@ -91,11 +112,33 @@ class ArcheryInteraction(
         if (scoreboardMode != ScoreboardMode.NONE) {
             runSync {
                 when (scoreboardMode) {
-                    ScoreboardMode.MULTI -> objective?.getScore(player.name)?.score = newScore
-                    ScoreboardMode.SOLO -> soloObjectives[player.uniqueId]?.getScore(player.name)?.score = newScore
+                    ScoreboardMode.MULTI -> {
+                        val obj = objective ?: return@runSync
+                        playerLines.remove(player.uniqueId)?.let { obj.scoreboard?.resetScores(it) }
+                        val line = formatLine(player, newScore)
+                        playerLines[player.uniqueId] = line
+                        obj.getScore(line).score = newScore
+                    }
+                    ScoreboardMode.SOLO -> {
+                        val obj = soloObjectives[player.uniqueId] ?: return@runSync
+                        playerLines.remove(player.uniqueId)?.let { obj.scoreboard?.resetScores(it) }
+                        val line = formatLine(player, newScore)
+                        playerLines[player.uniqueId] = line
+                        obj.getScore(line).score = newScore
+                    }
                     else -> {}
                 }
             }
+        }
+        if (mode == GameMode.MAX_TARGET && definition.maxTargets > 0 && newScore >= definition.maxTargets) {
+            ArcheryStopTrigger.triggerFor(player, context)
+        }
+    }
+
+    fun recordShot(player: Player) {
+        shots[player.uniqueId] = (shots[player.uniqueId] ?: 0) + 1
+        if (scoreboardMode != ScoreboardMode.NONE) {
+            addScore(player, 0)
         }
     }
 
@@ -120,7 +163,9 @@ class ArcheryInteraction(
                         obj.displaySlot = DisplaySlot.SIDEBAR
                         players.forEach { p ->
                             p.scoreboard = board
-                            obj.getScore(p.name).score = 0
+                            val line = formatLine(p, 0)
+                            playerLines[p.uniqueId] = line
+                            obj.getScore(line).score = 0
                         }
                         scoreboard = board
                         objective = obj
@@ -134,7 +179,9 @@ class ArcheryInteraction(
                                 Component.text("Time: ${timeRemaining.seconds}s")
                             )
                             obj.displaySlot = DisplaySlot.SIDEBAR
-                            obj.getScore(p.name).score = 0
+                            val line = formatLine(p, 0)
+                            playerLines[p.uniqueId] = line
+                            obj.getScore(line).score = 0
                             p.scoreboard = board
                             soloObjectives[p.uniqueId] = obj
                         }
@@ -155,7 +202,8 @@ class ArcheryInteraction(
                         objective?.displayName(Component.text("Time: ${timeRemaining.seconds}s"))
                         players.forEach { p ->
                             val score = scores[p.uniqueId] ?: 0
-                            objective?.getScore(p.name)?.score = score
+                            val line = playerLines[p.uniqueId] ?: return@forEach
+                            objective?.getScore(line)?.score = score
                         }
                     }
                     ScoreboardMode.SOLO -> {
@@ -163,7 +211,8 @@ class ArcheryInteraction(
                             val obj = soloObjectives[p.uniqueId] ?: return@forEach
                             obj.displayName(Component.text("Time: ${timeRemaining.seconds}s"))
                             val score = scores[p.uniqueId] ?: 0
-                            obj.getScore(p.name).score = score
+                            val line = playerLines[p.uniqueId] ?: return@forEach
+                            obj.getScore(line).score = score
                         }
                     }
                     else -> {}
@@ -187,6 +236,9 @@ class ArcheryInteraction(
         runSync {
             objective?.unregister()
             soloObjectives.values.forEach { it.unregister() }
+            soloObjectives.clear()
+            respawnTasks.forEach { it.cancel() }
+            respawnTasks.clear()
             players.forEach { p ->
                 if (manageInventory) {
                     p.inventory.clear()
@@ -203,6 +255,7 @@ class ArcheryInteraction(
             }
             targets.forEach { it.type = Material.AIR }
             targets.clear()
+            playerLines.clear()
         }
         players.forEach { p -> definition.endTrigger.triggerFor(p, context) }
         statArtifact?.let { artifact ->
@@ -261,26 +314,33 @@ class ArcheryInteraction(
         val player = event.entity.shooter as? Player ?: return
         val block = event.hitBlock ?: return
         if (!targets.contains(block)) return
-        val face = event.hitBlockFace ?: return
-        val arrowVec = event.entity.location.toVector()
-        val center = block.location.toVector().add(Vector(0.5, 0.5, 0.5))
-        val diff = arrowVec.subtract(center)
-        val distanceSquared = when {
-            face.modX != 0 -> diff.y * diff.y + diff.z * diff.z
-            face.modY != 0 -> diff.x * diff.x + diff.z * diff.z
-            else -> diff.x * diff.x + diff.y * diff.y
+        if (mode == GameMode.MAX_TARGET) {
+            addScore(player, 1)
+        } else {
+            val face = event.hitBlockFace ?: return
+            val arrowVec = event.entity.location.toVector()
+            val center = block.location.toVector().add(Vector(0.5, 0.5, 0.5))
+            val diff = arrowVec.subtract(center)
+            val distanceSquared = when {
+                face.modX != 0 -> diff.y * diff.y + diff.z * diff.z
+                face.modY != 0 -> diff.x * diff.x + diff.z * diff.z
+                else -> diff.x * diff.x + diff.y * diff.y
+            }
+            val points = when {
+                distanceSquared < 0.015625 -> 3 // within 0.125 blocks of center
+                distanceSquared < 0.0625 -> 2   // within 0.25 blocks of center
+                else -> 1
+            }
+            addScore(player, points)
         }
-        val points = when {
-            distanceSquared < 0.015625 -> 3 // within 0.125 blocks of center
-            distanceSquared < 0.0625 -> 2   // within 0.25 blocks of center
-            else -> 1
-        }
-        addScore(player, points)
         runSync {
             block.type = definition.hitBlock
-            Bukkit.getScheduler().runTaskLater(plugin, Runnable {
+            var task: BukkitTask? = null
+            task = Bukkit.getScheduler().runTaskLater(plugin, Runnable {
                 block.type = definition.targetBlock
+                task?.let { respawnTasks.remove(it) }
             }, definition.targetRespawnCooldown * 20)
+            respawnTasks += task
         }
         teleportNextZone(player)
     }
@@ -300,6 +360,16 @@ class ArcheryInteraction(
             stateArtifact?.restoreInventory(player.uniqueId) ?: initialInventories[player.uniqueId]
         } else null
         runSync {
+            if (scoreboardMode == ScoreboardMode.MULTI) {
+                playerLines.remove(player.uniqueId)?.let { line ->
+                    objective?.scoreboard?.resetScores(line)
+                }
+            } else if (scoreboardMode == ScoreboardMode.SOLO) {
+                playerLines.remove(player.uniqueId)
+                soloObjectives.remove(player.uniqueId)?.unregister()
+            } else {
+                playerLines.remove(player.uniqueId)
+            }
             if (manageInventory) {
                 player.inventory.clear()
                 restored?.let {

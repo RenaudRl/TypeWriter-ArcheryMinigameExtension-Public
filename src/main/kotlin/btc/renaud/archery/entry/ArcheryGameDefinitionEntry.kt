@@ -28,7 +28,9 @@ import org.bukkit.Material
 class ArcheryGameDefinitionEntry(
     override val id: String = "",
     override val name: String = "",
-    @MultiLine @Colored @Placeholder
+    @Placeholder
+    @Colored
+    @MultiLine
     @Help("Description displayed to players")
     val description: String = "",
     @Help("Positions where targets may spawn")
@@ -125,15 +127,35 @@ enum class ScoreboardMode { NONE, SOLO, MULTI }
 
 /** Holds configurable messages. Supports placeholders, color codes and multiline text. */
 data class Messages(
-    @MultiLine @Colored @Placeholder
+    @Placeholder
+    @Colored
+    @MultiLine
     val lobbyFull: String = "&cLobby is full",
-    @MultiLine @Colored @Placeholder
+    @Placeholder
+    @Colored
+    @MultiLine
+    @Help("Placeholders: %arena%,%count%,%min%")
     val joined: String = "&aJoined %arena% (%count%/%min%)",
-    @MultiLine @Colored @Placeholder
+    @Placeholder
+    @Colored
+    @MultiLine
     val left: String = "&cLeft %arena%",
-    @MultiLine @Colored @Placeholder
+    @Placeholder
+    @Colored
+    @MultiLine
+    @Help("Placeholders: %seconds%")
     val countdown: String = "&eGame starting in %seconds%...",
-    @MultiLine @Colored @Placeholder
-    val starting: String = "&aGame starting!"
+    @Placeholder
+    @Colored
+    @MultiLine
+    val starting: String = "&aGame starting!",
+    @Placeholder
+    @Colored
+    @Help("Placeholders: %player%,%score%")
+    val scoreboardLineMaxTarget: String = "%player%: %score%",
+    @Placeholder
+    @Colored
+    @Help("Placeholders: %player%,%score%")
+    val scoreboardLineTimeAttack: String = "%player%: %score%"
 )
 

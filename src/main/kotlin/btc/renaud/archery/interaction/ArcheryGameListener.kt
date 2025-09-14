@@ -5,6 +5,7 @@ import org.bukkit.entity.Player
 import org.bukkit.event.EventHandler
 import org.bukkit.event.Listener
 import org.bukkit.event.entity.ProjectileHitEvent
+import org.bukkit.event.entity.ProjectileLaunchEvent
 import org.bukkit.event.player.PlayerMoveEvent
 import org.bukkit.event.player.PlayerQuitEvent
 import org.bukkit.plugin.Plugin
@@ -32,5 +33,11 @@ object ArcheryGameListener : Listener {
     fun onProjectileHit(event: ProjectileHitEvent) {
         val shooter = event.entity.shooter as? Player ?: return
         ArcheryInteraction.interactionFor(shooter)?.handleProjectile(event)
+    }
+
+    @EventHandler
+    fun onProjectileLaunch(event: ProjectileLaunchEvent) {
+        val shooter = event.entity.shooter as? Player ?: return
+        ArcheryInteraction.interactionFor(shooter)?.recordShot(shooter)
     }
 }
