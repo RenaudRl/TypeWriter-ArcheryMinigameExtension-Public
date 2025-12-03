@@ -22,3 +22,4 @@ fun Zone.contains(location: Location): Boolean {
         location.y in minY..maxY &&
         location.z in minZ..maxZ
 }
+

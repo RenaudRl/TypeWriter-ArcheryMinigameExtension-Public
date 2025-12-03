@@ -21,7 +21,11 @@ import org.bukkit.inventory.ItemStack
 import org.bukkit.plugin.Plugin
 import org.bukkit.scoreboard.DisplaySlot
 import org.bukkit.scoreboard.Objective
+import org.bukkit.scoreboard.Criteria
 import org.bukkit.scoreboard.Scoreboard
+import org.bukkit.scoreboard.RenderType
+import org.bukkit.NamespacedKey
+import java.lang.reflect.Method
 import org.bukkit.scheduler.BukkitTask
 import org.bukkit.util.Vector
 import org.slf4j.LoggerFactory
@@ -43,6 +47,8 @@ import btc.renaud.archery.util.toLocation
 import btc.renaud.archery.util.contains
 import btc.renaud.archery.util.formatMessage
 import com.typewritermc.engine.paper.entry.entries.get
+import com.typewritermc.engine.paper.facts.FactDatabase
+import org.koin.java.KoinJavaComponent
 
 private val plugin: Plugin = Bukkit.getPluginManager().getPlugin("TypeWriter")
     ?: error("TypeWriter plugin not found")
@@ -85,6 +91,62 @@ class ArcheryInteraction(
     private val soloObjectives = mutableMapOf<UUID, Objective>()
     private val playerLines = mutableMapOf<UUID, String>()
     private val respawnTasks = mutableSetOf<BukkitTask>()
+    private val factDatabase: FactDatabase = KoinJavaComponent.get(FactDatabase::class.java)
+
+    private fun registerObjective(
+        board: Scoreboard,
+        key: NamespacedKey,
+        displayName: Component,
+        renderType: RenderType = RenderType.INTEGER
+    ): Objective {
+        val criteriaClass = findObjectiveCriteriaClass()
+        val criteriaInstance = criteriaClass?.let { runCatching { it.getField("DUMMY").get(null) }.getOrNull() }
+        val method = if (criteriaClass != null) findNamespacedRegisterMethod(board, criteriaClass) else null
+
+        if (method != null && criteriaInstance != null) {
+            runCatching { method.invoke(board, key, criteriaInstance, displayName, renderType) as? Objective }
+                .onSuccess { objective ->
+                    if (objective != null) {
+                        logger.debug("Registered scoreboard objective {} using NamespacedKey API", key)
+                        return objective
+                    } else {
+                        logger.warn("Scoreboard objective registration returned null for key {}", key)
+                    }
+                }
+                .onFailure { throwable ->
+                    logger.warn("Failed to register scoreboard objective {} using NamespacedKey API", key, throwable)
+                }
+        }
+
+        val fallbackName = key.key.let { if (it.length > 16) it.substring(0, 16) else it }
+        logger.debug("Falling back to legacy scoreboard objective registration for key {}", key)
+        return board.registerNewObjective(fallbackName, Criteria.DUMMY, displayName, renderType)
+    }
+
+    private fun findObjectiveCriteriaClass(): Class<*>? {
+        return runCatching { Class.forName("org.bukkit.scoreboard.ObjectiveCriteria") }.getOrNull()
+            ?: runCatching { Class.forName("io.papermc.paper.scoreboard.criteria.ObjectiveCriteria") }.getOrNull()
+    }
+
+    private fun findNamespacedRegisterMethod(board: Scoreboard, criteriaClass: Class<*>): Method? {
+        return runCatching {
+            board.javaClass.getMethod(
+                "registerNewObjective",
+                NamespacedKey::class.java,
+                criteriaClass,
+                Component::class.java,
+                RenderType::class.java
+            )
+        }.getOrNull() ?: runCatching {
+            Scoreboard::class.java.getMethod(
+                "registerNewObjective",
+                NamespacedKey::class.java,
+                criteriaClass,
+                Component::class.java,
+                RenderType::class.java
+            )
+        }.getOrNull()
+    }
 
     private fun formatLine(player: Player, score: Int): String {
         val template = when (mode) {
@@ -109,6 +171,7 @@ class ArcheryInteraction(
     private fun addScore(player: Player, points: Int) {
         val newScore = (scores[player.uniqueId] ?: 0) + points
         scores[player.uniqueId] = newScore
+        updateScoreFact(player, newScore)
         if (scoreboardMode != ScoreboardMode.NONE) {
             runSync {
                 when (scoreboardMode) {
@@ -155,9 +218,9 @@ class ArcheryInteraction(
                 when (scoreboardMode) {
                     ScoreboardMode.MULTI -> {
                         val board = manager.newScoreboard
-                        val obj = board.registerNewObjective(
-                            "archery",
-                            "dummy",
+                        val obj = registerObjective(
+                            board,
+                            NamespacedKey(plugin, "archery_multi"),
                             Component.text("Time: ${timeRemaining.seconds}s")
                         )
                         obj.displaySlot = DisplaySlot.SIDEBAR
@@ -173,9 +236,9 @@ class ArcheryInteraction(
                     ScoreboardMode.SOLO -> {
                         players.forEach { p ->
                             val board = manager.newScoreboard
-                            val obj = board.registerNewObjective(
-                                "archery",
-                                "dummy",
+                            val obj = registerObjective(
+                                board,
+                                NamespacedKey(plugin, "archery_${p.uniqueId}"),
                                 Component.text("Time: ${timeRemaining.seconds}s")
                             )
                             obj.displaySlot = DisplaySlot.SIDEBAR
@@ -268,8 +331,8 @@ class ArcheryInteraction(
 
     private fun spawnTargets() {
         runSync {
-            definition.targetPositions.forEach { pos ->
-                val block = pos.toLocation().block
+            definition.targetPositions.forEach { target ->
+                val block = target.position.toLocation().block
                 block.type = definition.targetBlock
                 targets += block
             }
@@ -392,6 +455,16 @@ class ArcheryInteraction(
         private val interactionPlayers = mutableMapOf<UUID, ArcheryInteraction>()
         fun interactionFor(player: Player): ArcheryInteraction? = interactionPlayers[player.uniqueId]
     }
+
+    private fun updateScoreFact(player: Player, score: Int) {
+        val factRef = definition.scoreFact
+        if (!factRef.isSet) return
+        runCatching {
+            factDatabase.modify(player) { this[factRef] = score }
+        }.onFailure { throwable ->
+            logger.warn("Failed to update score fact {} for {}: {}", factRef.id, player.name, throwable.message)
+        }
+    }
 }
 
 /** Trigger used to start an archery interaction. */
@@ -455,4 +528,5 @@ class ArcheryTriggerHandler : TriggerHandler {
         )
     }
 }
+
 

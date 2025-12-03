@@ -1,17 +1,15 @@
 package btc.renaud.archery.util
 
-import org.bukkit.ChatColor
+import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer
 import org.bukkit.entity.Player
 
 /**
  * Applies placeholder replacement and color codes to the given message.
  */
 fun formatMessage(message: String, placeholders: Map<String, String> = emptyMap()): String {
-    var formatted = message
-    placeholders.forEach { (key, value) ->
-        formatted = formatted.replace("%$key%", value)
-    }
-    return ChatColor.translateAlternateColorCodes('&', formatted)
+    val replaced = replacePlaceholders(message, placeholders)
+    val component = LEGACY_AMPERSAND.deserialize(replaced)
+    return LEGACY_SECTION.serialize(component)
 }
 
 /**
@@ -21,5 +19,19 @@ fun formatMessage(message: String, placeholders: Map<String, String> = emptyMap(
  */
 fun Player.sendFormatted(message: String, placeholders: Map<String, String> = emptyMap()) {
     val colored = formatMessage(message, placeholders)
-    colored.split("\n").forEach { line -> this.sendMessage(line) }
+    colored.split("\n").forEach { line ->
+        sendMessage(LEGACY_SECTION.deserialize(line))
+    }
 }
+
+private fun replacePlaceholders(message: String, placeholders: Map<String, String>): String {
+    var formatted = message
+    placeholders.forEach { (key, value) ->
+        formatted = formatted.replace("%$key%", value)
+    }
+    return formatted
+}
+
+private val LEGACY_AMPERSAND = LegacyComponentSerializer.legacyAmpersand()
+private val LEGACY_SECTION = LegacyComponentSerializer.legacySection()
+

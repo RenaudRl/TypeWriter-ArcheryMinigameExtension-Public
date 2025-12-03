@@ -41,3 +41,4 @@ object ArcheryGameListener : Listener {
         ArcheryInteraction.interactionFor(shooter)?.recordShot(shooter)
     }
 }
+

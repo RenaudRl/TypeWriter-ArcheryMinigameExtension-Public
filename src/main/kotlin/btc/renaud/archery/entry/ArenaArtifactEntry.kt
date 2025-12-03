@@ -18,3 +18,4 @@ class ArenaArtifactEntry(
     override val artifactId: String = "renaud:archery_arena",
 ) : ArtifactEntry, TWEntry
 
+

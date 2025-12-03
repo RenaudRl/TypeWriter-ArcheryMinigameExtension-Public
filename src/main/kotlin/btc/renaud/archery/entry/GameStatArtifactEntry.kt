@@ -83,3 +83,4 @@ fun GameStatArtifactEntry.playerTopScore(mode: GameMode, uuid: UUID): Int {
     return playerObj.get(mode.name)?.asInt ?: 0
 }
 
+

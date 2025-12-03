@@ -29,3 +29,4 @@ class ArcheryJoinActionEntry(
         ArcheryLobbyManager.lobby(arena).join(player, context)
     }
 }
+

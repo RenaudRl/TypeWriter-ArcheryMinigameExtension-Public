@@ -22,3 +22,4 @@ fun Position.toLocation(): Location {
 
     return Location(world, x, y, z, yaw, pitch)
 }
+

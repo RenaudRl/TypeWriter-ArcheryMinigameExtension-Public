@@ -1,5 +1,12 @@
 package btc.renaud.archery.entry
 
+import com.google.gson.JsonDeserializationContext
+import com.google.gson.JsonDeserializer
+import com.google.gson.JsonElement
+import com.google.gson.JsonObject
+import com.google.gson.JsonSerializationContext
+import com.google.gson.JsonSerializer
+import com.google.gson.annotations.JsonAdapter
 import com.typewritermc.core.books.pages.Colors
 import com.typewritermc.core.entries.Entry as TWEntry
 import com.typewritermc.core.entries.Ref
@@ -15,9 +22,11 @@ import com.typewritermc.core.utils.point.Position
 import com.typewritermc.engine.paper.content.modes.custom.PositionContentMode
 import com.typewritermc.engine.paper.entry.ManifestEntry
 import com.typewritermc.engine.paper.entry.TriggerableEntry
+import com.typewritermc.engine.paper.entry.entries.WritableFactEntry
 import com.typewritermc.engine.paper.utils.item.Item
 import com.typewritermc.engine.paper.utils.item.SerializedItem
 import org.bukkit.Material
+import java.lang.reflect.Type
 
 /**
  * Defines a playable archery arena and its settings. This manifest is used to
@@ -33,9 +42,8 @@ class ArcheryGameDefinitionEntry(
     @MultiLine
     @Help("Description displayed to players")
     val description: String = "",
-    @Help("Positions where targets may spawn")
-    @ContentEditor(PositionContentMode::class)
-    val targetPositions: List<Position> = emptyList(),
+    @Help("List of target positions (add multiple items, capture each in-game)")
+    val targetPositions: List<TargetPosition> = emptyList(),
     @Help("Zones players must stand in to shoot")
     val shootingZones: List<Zone> = emptyList(),
     @Help("Material used for target blocks")
@@ -93,9 +101,41 @@ class ArcheryGameDefinitionEntry(
     val bowItem: Item = SerializedItem(material = Material.BOW),
     @Help("Item given to players as arrows")
     val arrowItem: Item = SerializedItem(material = Material.ARROW),
+    @Help("Optional fact kept in sync with each player's current score during a game")
+    val scoreFact: Ref<WritableFactEntry> = emptyRef(),
     @Help("Customizable messages for lobby and game")
     val messages: Messages = Messages(),
 ) : ManifestEntry, TWEntry
+
+/** Individual target position that must be captured in-game. */
+@JsonAdapter(TargetPositionAdapter::class)
+data class TargetPosition(
+    @Help("Capture in-game to set where a target can spawn")
+    @ContentEditor(PositionContentMode::class)
+    val position: Position = Position.ORIGIN,
+)
+
+private class TargetPositionAdapter : JsonSerializer<TargetPosition>, JsonDeserializer<TargetPosition> {
+    override fun serialize(src: TargetPosition, typeOfSrc: Type, context: JsonSerializationContext): JsonElement {
+        return JsonObject().apply { add("position", context.serialize(src.position, Position::class.java)) }
+    }
+
+    override fun deserialize(json: JsonElement, typeOfT: Type, context: JsonDeserializationContext): TargetPosition {
+        if (json.isJsonObject) {
+            val obj = json.asJsonObject
+            if (obj.has("position")) {
+                val pos = context.deserialize<Position>(obj.get("position"), Position::class.java)
+                return TargetPosition(pos ?: Position.ORIGIN)
+            }
+            if (obj.has("world")) {
+                val pos = context.deserialize<Position>(obj, Position::class.java)
+                return TargetPosition(pos ?: Position.ORIGIN)
+            }
+        }
+        val pos = context.deserialize<Position>(json, Position::class.java)
+        return TargetPosition(pos ?: Position.ORIGIN)
+    }
+}
 
 /** Represents a cuboid region defined by two corner positions. */
 data class Zone(
@@ -158,4 +198,5 @@ data class Messages(
     @Help("Placeholders: %player%,%score%")
     val scoreboardLineTimeAttack: String = "%player%: %score%"
 )
+
 
