@@ -2,13 +2,9 @@
 
 ![Java Version](https://img.shields.io/badge/Java-21-orange)
 ![Build Status](https://img.shields.io/badge/build-passing-brightgreen)
-![Target](https://img.shields.io/badge/Target-Paper%20/%20Folia%20/%20TypeWriter-blue)
+![Target](https://img.shields.io/badge/Target-Paper%20/%20Folia%20/%20BTC--CORE-blue)
 
 **ArcheryGame Extension** is a minigame module for **TypeWriter**, engineered for **BTC Studio** infrastructure. It provides a fully configurable archery experience with multiple game modes.
-
-> [!WARNING]
-> **DEVELOPER COMPATIBILITY NOTICE**
-> This extension is designed for **TypeWriter** and **BTC-CORE**. Standard implementations may differ.
 
 ---
 
