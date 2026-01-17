@@ -13,6 +13,7 @@ import kotlinx.coroutines.runBlocking
 import org.koin.core.qualifier.named
 import org.koin.java.KoinJavaComponent.get
 import java.util.UUID
+import btc.renaud.profiles.api.ProfilesAPI
 
 /**
  * Stores persistent statistics for archery games. Scores are saved in a JSON
@@ -33,6 +34,18 @@ private val gson: Gson
     get() = get(Gson::class.java, named("dataSerializer"))
 private val assetManager: AssetManager
     get() = get(AssetManager::class.java)
+
+private fun getStorageKey(uuid: UUID): String {
+    return try {
+        if (ProfilesAPI.isPerProfileExtension("ArcheryGame")) {
+            ProfilesAPI.getProfileStorageKeyByUuid(uuid, uuid.toString())
+        } else {
+            uuid.toString()
+        }
+    } catch (t: Throwable) {
+        uuid.toString()
+    }
+}
 
 fun GameStatArtifactEntry.loadData(): JsonObject {
     if (artifactId.isBlank()) return JsonObject()
@@ -55,6 +68,7 @@ fun GameStatArtifactEntry.saveData(obj: JsonObject) {
 }
 
 fun GameStatArtifactEntry.recordScore(mode: GameMode, uuid: UUID, score: Int) {
+    val storageKey = getStorageKey(uuid)
     val root = loadData()
     val global = root.getAsJsonObject("global") ?: JsonObject().also { root.add("global", it) }
     val players = root.getAsJsonObject("players") ?: JsonObject().also { root.add("players", it) }
@@ -63,7 +77,7 @@ fun GameStatArtifactEntry.recordScore(mode: GameMode, uuid: UUID, score: Int) {
     val currentGlobal = global.get(key)?.asInt ?: 0
     if (score > currentGlobal) global.addProperty(key, score)
 
-    val playerObj = players.getAsJsonObject(uuid.toString()) ?: JsonObject().also { players.add(uuid.toString(), it) }
+    val playerObj = players.getAsJsonObject(storageKey) ?: JsonObject().also { players.add(storageKey, it) }
     val currentPlayer = playerObj.get(key)?.asInt ?: 0
     if (score > currentPlayer) playerObj.addProperty(key, score)
 
@@ -77,10 +91,9 @@ fun GameStatArtifactEntry.topScore(mode: GameMode): Int {
 }
 
 fun GameStatArtifactEntry.playerTopScore(mode: GameMode, uuid: UUID): Int {
+    val storageKey = getStorageKey(uuid)
     val root = loadData()
     val players = root.getAsJsonObject("players") ?: return 0
-    val playerObj = players.getAsJsonObject(uuid.toString()) ?: return 0
+    val playerObj = players.getAsJsonObject(storageKey) ?: return 0
     return playerObj.get(mode.name)?.asInt ?: 0
 }
-
-
