@@ -1,0 +1,73 @@
+id: omegashop
+title: "&aOmega Shop"
+rows: 6
+fillerItem: {}
+priceLore:
+  - "&aBuy: {buy}"
+  - "&cSell: {sell}"
+nextPageButton: {}
+nextPageButtonName: "&aNext"
+nextPageButtonLore: ["&7Next page"]
+previousPageButton: {}
+previousPageButtonName: "&cPrevious"
+previousPageButtonLore: ["&7Previous page"]
+currency: VAULT
+balancePlaceholder: ""
+addCommand: ""
+removeCommand: ""
+taxes: 0.1
+resetPolicy: DAILY
+resetHour: 0
+resetMinute: 0
+buyStackButton:
+  slot: 11
+  item: {}
+  name: "&aBuy 64"
+  lore:
+    - "&7Buy a stack for {buy}"
+sellStackButton:
+  slot: 15
+  item: {}
+  name: "&cSell 64"
+  lore:
+    - "&7Sell a stack for {sell}"
+buyAmountButton:
+  slot: 20
+  item: {}
+  name: "&aBuy..."
+  lore:
+    - "&7Enter amount in chat"
+sellAmountButton:
+  slot: 24
+  item: {}
+  name: "&cSell..."
+  lore:
+    - "&7Enter amount in chat"
+infoButton:
+  slot: 22
+  item: {}
+  name: "&eInfo"
+  lore:
+    - "&7Show prices"
+infoMessage:
+  - "&eBuy price: {buy}"
+  - "&eSell price: {sell}"
+criteria: []
+lockedItem: {}
+items:
+  - item: {}
+    name: "&eExample"
+    lore: ["&7Custom line"]
+    criteria: []
+    limitPerPlayer: 5
+    strategy:
+      price: 100.0
+      sellPrice: 50.0
+      sellPriceMin: 25.0
+      sellPriceMax: 75.0
+      stockMax: 64
+      min: 50.0
+      max: 200.0
+      step: 0.2
+      rounding: 0.5
+artifact: shops
